@@ -684,7 +684,7 @@ export async function createApp(options?: { staticDir?: string; databasePath?: s
 
   if (options?.staticDir) {
     app.use(express.static(options.staticDir, { extensions: ["html"] }));
-    app.get("*", (request, response, next) => {
+    app.get(/^\/(?!api(?:\/|$)).*/, (request, response, next) => {
       if (request.path.startsWith("/api")) {
         return next();
       }
