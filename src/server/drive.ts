@@ -397,7 +397,7 @@ export async function startDriveOAuthFlow() {
   pendingAuthState = Math.random().toString(36).slice(2);
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: "offline",
-    prompt: "consent",
+    prompt: "consent select_account",
     scope: DRIVE_SCOPE,
     state: pendingAuthState,
   });
@@ -465,9 +465,15 @@ export async function disconnectDrive() {
     expiryDate: undefined,
   });
 
+  pendingAuthState = null;
+
   await Promise.all([
     removeSetting("driveConnectedEmail"),
     removeSetting("driveFolderId"),
+    removeSetting("driveLastUploadAt"),
+    removeSetting("driveLastUploadFile"),
+    removeSetting("driveLastUploadStatus"),
+    removeSetting("driveLastUploadError"),
   ]);
 
   return getDriveConfig();
