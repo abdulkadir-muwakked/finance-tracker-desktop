@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "dist-desktop",
+    "rootDir": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": [
+    "desktop/**/*.ts",
+    "src/server/**/*.ts",
+    "src/lib/**/*.ts"
+  ],
+  "exclude": ["node_modules", "src/**/*.tsx", "src/app/**/*", "src/components/**/*"]
+}

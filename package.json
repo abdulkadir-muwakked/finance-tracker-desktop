@@ -1,0 +1,104 @@
+{
+  "name": "finance-tracker-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist-desktop/desktop/main.js",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:web\" \"npm:dev:api\"",
+    "dev:web": "next dev -p 3000",
+    "dev:api": "cross-env NODE_ENV=development node --watch --import tsx src/server/index.ts",
+    "dev:desktop": "concurrently -k \"npm:dev:web\" \"npm:dev:api\" \"npm:dev:electron\"",
+    "dev:electron": "wait-on tcp:3000 tcp:3001 && cross-env NODE_ENV=development electron -r tsx/cjs desktop/main.ts",
+    "build:web": "next build",
+    "build:desktop": "tsc -p tsconfig.desktop.json",
+    "build": "prisma generate && npm run build:web && npm run build:desktop",
+    "start:api": "cross-env NODE_ENV=production node --import tsx src/server/index.ts",
+    "lint": "next lint",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev --name init",
+    "prisma:seed": "node --import tsx prisma/seed.ts",
+    "import:excel": "node --import tsx scripts/import-excel.ts",
+    "dist": "npm run build && electron-builder"
+  },
+  "keywords": [
+    "nextjs",
+    "electron",
+    "finance",
+    "sqlite",
+    "prisma"
+  ],
+  "author": "",
+  "license": "MIT",
+  "description": "Turkce masaustu finans takip uygulamasi",
+  "dependencies": {
+    "@hookform/resolvers": "^5.2.2",
+    "@prisma/client": "^6.16.2",
+    "@radix-ui/react-alert-dialog": "^1.1.15",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-label": "^2.1.8",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-separator": "^1.1.8",
+    "@radix-ui/react-slot": "^1.2.4",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cors": "^2.8.6",
+    "date-fns": "^4.1.0",
+    "express": "^5.2.1",
+    "googleapis": "^171.4.0",
+    "lucide-react": "^1.8.0",
+    "next": "^14.2.35",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-hook-form": "^7.73.1",
+    "recharts": "^3.8.1",
+    "sqlite3": "^6.0.1",
+    "tailwind-merge": "^3.5.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.6.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^41.2.2",
+    "electron-builder": "^26.8.1",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "^14.2.35",
+    "postcss": "^8.4.49",
+    "prisma": "^6.16.2",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.21.0",
+    "typescript": "^5.5.4",
+    "wait-on": "^9.0.5",
+    "xlsx": "^0.18.5"
+  },
+  "build": {
+    "appId": "com.company.finance-tracker",
+    "productName": "Finans Takip",
+    "asar": true,
+    "files": [
+      "dist-desktop/**/*",
+      "out/**/*",
+      "prisma/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    }
+  }
+}
