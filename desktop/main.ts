@@ -1,17 +1,28 @@
 const { app, BrowserWindow, dialog } = require("electron") as typeof import("electron");
 const fs = require("fs") as typeof import("fs");
 const path = require("path") as typeof import("path");
-const { bootstrapDatabase } = require("../src/server/bootstrap") as typeof import("../src/server/bootstrap");
-const { runAutomaticBackupIfDue, startAutomaticBackupScheduler } = require("../src/server/backup") as typeof import("../src/server/backup");
-const { startServer } = require("../src/server/server") as typeof import("../src/server/server");
 
 let mainWindow: import("electron").BrowserWindow | null = null;
+
+function loadServerModules() {
+  const { bootstrapDatabase } = require("../src/server/bootstrap") as typeof import("../src/server/bootstrap");
+  const { runAutomaticBackupIfDue, startAutomaticBackupScheduler } = require("../src/server/backup") as typeof import("../src/server/backup");
+  const { startServer } = require("../src/server/server") as typeof import("../src/server/server");
+
+  return {
+    bootstrapDatabase,
+    runAutomaticBackupIfDue,
+    startAutomaticBackupScheduler,
+    startServer,
+  };
+}
 
 async function ensureDatabase(userDataPath: string) {
   const dbDir = path.join(userDataPath, "data");
   fs.mkdirSync(dbDir, { recursive: true });
   process.env.APP_DATA_DIR = dbDir;
   process.env.DATABASE_URL = `file:${path.join(dbDir, "finance-tracker.db")}`;
+  const { bootstrapDatabase } = loadServerModules();
   await bootstrapDatabase();
 }
 
@@ -20,6 +31,7 @@ async function createMainWindow() {
   const userDataPath = app.getPath("userData");
 
   await ensureDatabase(userDataPath);
+  const { runAutomaticBackupIfDue, startAutomaticBackupScheduler, startServer } = loadServerModules();
   await runAutomaticBackupIfDue();
 
   if (isDev) {

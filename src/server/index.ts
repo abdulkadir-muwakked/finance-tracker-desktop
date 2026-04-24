@@ -1,8 +1,5 @@
 import fs from "fs";
 import path from "path";
-import { runAutomaticBackupIfDue, startAutomaticBackupScheduler } from "./backup";
-import { bootstrapDatabase } from "./bootstrap";
-import { startServer } from "./server";
 
 async function bootstrap() {
   const appDataDir =
@@ -13,6 +10,10 @@ async function bootstrap() {
   if (!process.env.DATABASE_URL) {
     process.env.DATABASE_URL = `file:${path.join(appDataDir, "finance-tracker.db")}`;
   }
+
+  const { runAutomaticBackupIfDue, startAutomaticBackupScheduler } = await import("./backup");
+  const { bootstrapDatabase } = await import("./bootstrap");
+  const { startServer } = await import("./server");
 
   await bootstrapDatabase();
   await runAutomaticBackupIfDue();
