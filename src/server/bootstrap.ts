@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "../../generated/prisma-client";
 
 export async function bootstrapDatabase() {
   const prisma = new PrismaClient();

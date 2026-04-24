@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../generated/prisma-client"
 }
 
 datasource db {
@@ -54,4 +55,3 @@ model AppSetting {
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 }
-

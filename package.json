@@ -10,7 +10,7 @@
     "dev:desktop": "concurrently -k \"npm:dev:web\" \"npm:dev:api\" \"npm:dev:electron\"",
     "dev:electron": "wait-on tcp:3000 tcp:3001 && cross-env NODE_ENV=development electron -r tsx/cjs desktop/main.ts",
     "build:web": "next build",
-    "build:desktop": "tsc -p tsconfig.desktop.json",
+    "build:desktop": "tsc -p tsconfig.desktop.json && node scripts/copy-generated-prisma.mjs",
     "build": "prisma generate && npm run build:web && npm run build:desktop",
     "build:icons": "node scripts/generate-icons.mjs",
     "start:api": "cross-env NODE_ENV=production node --import tsx src/server/index.ts",

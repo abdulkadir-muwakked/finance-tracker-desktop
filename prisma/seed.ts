@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "../generated/prisma-client";
 import path from "path";
 import { bootstrapDatabase } from "../src/server/bootstrap";
 

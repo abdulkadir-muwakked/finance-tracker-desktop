@@ -1,6 +1,7 @@
 .next
 out
 dist-desktop
+generated
 release
 node_modules
 .env
