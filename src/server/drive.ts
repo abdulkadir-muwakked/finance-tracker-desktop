@@ -457,7 +457,26 @@ export async function completeDriveOAuthFlow(code: string, state?: string | null
 }
 
 export async function disconnectDrive() {
+  const config = await getDriveConfig();
   const currentSecrets = readSecureSecretsFile();
+
+  if (config.clientId && config.clientSecret && (config.refreshToken || config.accessToken)) {
+    try {
+      const oauth2Client = createOAuthClient(config);
+
+      if (config.refreshToken) {
+        await oauth2Client.revokeToken(config.refreshToken);
+      }
+
+      if (config.accessToken) {
+        await oauth2Client.revokeToken(config.accessToken);
+      }
+    } catch {
+      // Revoke can fail if the token is already invalid or expired.
+      // Local cleanup should still continue.
+    }
+  }
+
   writeSecureSecretsFile({
     ...currentSecrets,
     refreshToken: undefined,
