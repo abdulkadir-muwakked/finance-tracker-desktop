@@ -82,10 +82,17 @@
     "appId": "com.company.finance-tracker",
     "productName": "Finans Takip",
     "asar": true,
+    "asarUnpack": [
+      "node_modules/.prisma/**/*",
+      "node_modules/@prisma/**/*",
+      "**/*.node"
+    ],
     "files": [
       "dist-desktop/**/*",
       "out/**/*",
       "prisma/**/*",
+      "node_modules/.prisma/**/*",
+      "node_modules/@prisma/**/*",
       "node_modules/**/*",
       "package.json"
     ],
