@@ -31,6 +31,7 @@ async function createMainWindow() {
       backgroundColor: "#f4f5f0",
       webPreferences: {
         contextIsolation: true,
+        sandbox: true,
       },
     });
 
@@ -54,6 +55,7 @@ async function createMainWindow() {
     backgroundColor: "#f4f5f0",
     webPreferences: {
       contextIsolation: true,
+      sandbox: true,
     },
   });
 

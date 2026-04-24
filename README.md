@@ -1,126 +1,190 @@
-# Finans Takip Masaustu Uygulamasi
+# Finance Tracker Desktop
 
-Bu proje, ofis ici gelir-gider takibini Excel'den cikarmak icin hazirlanmis masaustu odakli bir MVP'dir.
+A desktop-first internal finance tracking app built to replace spreadsheet-based income and expense workflows with a simpler, more reliable local application.
 
-## Teknoloji yığını
+The UI is in Turkish, while the codebase and documentation are kept maintainable for broader reuse. The current MVP is suitable for office use and can also be adapted for other organizations.
 
-- Next.js + React + TypeScript
-- Tailwind CSS
-- shadcn/ui tarzinda yeniden kullanilabilir UI bilesenleri
-- Recharts
-- Express
-- SQLite + Prisma
-- Electron
+## Overview
 
-## Ozellikler
+This project combines:
 
-- Turkce arayuz
-- Yeni gelir/gider formu
-- Aylik dashboard
-- Islemler listesi, filtreleme, arama, duzenleme ve silme
-- Aylik raporlar ve grafikler
-- Kategori yonetimi
-- Temel ayarlar
-- Haftalik otomatik yerel yedekleme
-- Elle `Yedek Al` islemi
-- Yerel SQLite saklama
-- Electron ile masaustu paketleme
+- Next.js + React + TypeScript for the frontend
+- Tailwind CSS for styling
+- shadcn/ui-style reusable components
+- Recharts for reporting visuals
+- Express for the local API layer
+- SQLite + Prisma for local data storage
+- Electron for desktop packaging
 
-## Gelistirme
+The app is designed to run fully on a local work computer, with optional Google Drive backup support.
 
-1. Bagimliliklari yukleyin:
+## Core Features
+
+- Turkish interface for non-technical office users
+- Transaction entry form with validation
+- Income and expense tracking
+- Category management
+- Transaction filtering, search, editing, and deletion
+- Dashboard with current-period and all-time summaries
+- Daily, monthly, yearly, and full-period reports
+- Period-to-period comparisons
+- Local SQLite storage
+- Manual and scheduled backups
+- Optional Google Drive backup upload
+- Electron packaging for desktop distribution
+
+## Screenshots
+
+Add project screenshots here later. Suggested file paths:
+
+- `docs/screenshots/dashboard.png`
+- `docs/screenshots/transactions.png`
+- `docs/screenshots/reports.png`
+- `docs/screenshots/settings.png`
+
+Suggested markdown block when you are ready:
+
+```md
+### Dashboard
+![Dashboard](docs/screenshots/dashboard.png)
+
+### Transactions
+![Transactions](docs/screenshots/transactions.png)
+
+### Reports
+![Reports](docs/screenshots/reports.png)
+
+### Settings
+![Settings](docs/screenshots/settings.png)
+```
+
+## Main Pages
+
+- `Dashboard`
+- `Yeni Islem`
+- `Islemler`
+- `Aylik / Gunluk / Yillik Raporlar`
+- `Kategoriler`
+- `Ayarlar`
+
+## Development
+
+Install dependencies:
 
 ```bash
 npm install
 ```
 
-2. Prisma istemcisini ve veritabanini hazirlayin:
+Prepare Prisma and seed the local database:
 
 ```bash
 npm run prisma:generate
 npm run prisma:seed
 ```
 
-3. Gelistirme modunu baslatin:
+Start web + local API in development:
 
 ```bash
 npm run dev
 ```
 
-Bu komut:
+This starts:
 
-- Next.js arayuzunu `http://127.0.0.1:3000` adresinde
-- Express API'yi `http://127.0.0.1:3001` adresinde
+- Next.js on `http://localhost:3000`
+- Express API on `http://localhost:3001`
 
-birlikte calistirir.
-
-Electron gelistirme penceresini de acmak icin:
+To run the Electron shell during development as well:
 
 ```bash
 npm run dev:desktop
 ```
 
-## Paketleme
+## Production Build
 
-1. Uretim derlemesini alin:
+Build the application:
 
 ```bash
 npm run build
 ```
 
-2. Masaustu kurulum paketini uretin:
+Create a packaged desktop installer:
 
 ```bash
 npm run dist
 ```
 
-Paketler `release/` klasorunde olusur. Electron paketi Node.js gerektirmeden calisir.
+Build artifacts are generated in `release/`.
 
-## GitHub Actions ile Windows paketleme
+## GitHub Actions Windows Build
 
-Proje icinde hazir workflow:
+The repository includes a ready-to-run workflow:
 
 - `.github/workflows/build-desktop.yml`
 
-Kullanim:
+To build a Windows installer from GitHub:
 
-1. Projeyi GitHub'a push edin.
-2. GitHub repo icinde `Actions` sekmesine girin.
-3. `Build Desktop App` workflow'unu secin.
-4. `Run workflow` ile calistirin.
-5. Islem bitince artifact olarak `finance-tracker-windows` paketini indirin.
+1. Push the repository to GitHub.
+2. Open the `Actions` tab.
+3. Select `Build Desktop App`.
+4. Run the workflow.
+5. Download the `finance-tracker-windows` artifact after the job finishes.
 
-Bu artifact icinde genelde sunlar bulunur:
+The artifact typically contains:
 
-- Windows kurulum dosyasi `.exe`
-- `latest*.yml`
-- varsa `.blockmap`
+- a Windows installer `.exe`
+- update metadata files such as `latest*.yml`
+- optional `.blockmap` files
 
-Not:
+## Database and Local Storage
 
-- Workflow su an `windows-latest` uzerinde Windows installer uretir.
-- Kod imzalama ayarlanmadiysa Windows ilk acilista SmartScreen uyarisi gosterebilir.
-- Uygulama ikonunu ozellestirmek icin `electron-builder` ayarlarina ayri `icon` dosyalari eklenmelidir.
+- Prisma schema: `prisma/schema.prisma`
+- Development database: `prisma/finance-tracker.db`
+- Packaged desktop database: stored under the Electron app data directory
+- Local backups: stored in the configured backup folder
+- Local credentials and backup secrets: stored outside the tracked repository and ignored by Git
 
-## Veritabani
+## Backups
 
-- Prisma dosyasi: `prisma/schema.prisma`
-- Varsayilan gelistirme DB: `prisma/finance-tracker.db`
-- Paketlenmis uygulamada DB: Electron `userData/data/finance-tracker.db`
+The application supports:
 
-## Sayfalar
+- manual local backups
+- automatic scheduled local backups
+- configurable backup directory
+- configurable auto-backup interval
+- retention of the latest 5 backups
+- optional upload of backup files to Google Drive
 
-- `/dashboard`
-- `/yeni-islem`
-- `/islemler`
-- `/raporlar`
-- `/kategoriler`
-- `/ayarlar`
+## Security Notes
 
-## Notlar
+Recent hardening included:
 
-- Export yapisi aylik rapor ekraninda hazir tutuldu; PDF/Excel disa aktarma sonraki adim olarak eklenebilir.
-- Varsayilan kategoriler seed ile otomatik eklenir: `Mutfak`, `Teknik`, `Maaşlar`, `Diğer`
-- Ilk MVP'de giris sistemi yoktur; uygulama lokal kullanim senaryosu icin tasarlanmistir.
-- Yedekler veritabani klasoru altindaki `backups/` dizinine kaydedilir ve son 5 yedek saklanir.
-- Otomatik yedek araligi `Ayarlar` ekranindan degistirilebilir; uygulama acilista ve acik kaldigi surece periyodik kontrol yapar.
+- restricted localhost API CORS behavior
+- local API session protection for browser access
+- removal of Google client secret exposure from frontend responses
+- local secret storage moved out of SQLite into ignored credential files
+- Electron renderer sandbox enabled
+
+## Known Limitations
+
+- PDF/Excel export is not fully implemented yet
+- The Google Drive backup flow is intended for trusted internal usage, not multi-tenant cloud deployment
+- `npm audit` may still report dependency advisories that require a separate upgrade pass for libraries such as `next`, `prisma`, or `xlsx`
+
+## Seeded Default Categories
+
+The seed process creates these initial categories:
+
+- `Mutfak`
+- `Teknik`
+- `Maaslar`
+- `Diger`
+
+## Packaging Notes
+
+- The packaged desktop app does not require Node.js or development tools on the target machine
+- Unsigned Windows builds may trigger SmartScreen warnings on first launch
+- Installer branding and icons are generated from assets in the `build/` directory
+
+## License
+
+MIT

@@ -24,12 +24,40 @@ export class ApiError extends Error {
   }
 }
 
+let sessionReadyPromise: Promise<void> | null = null;
+
+async function ensureLocalSession() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  if (!sessionReadyPromise) {
+    sessionReadyPromise = fetch(`${API_BASE_URL}/api/session`, {
+      method: "POST",
+      credentials: "include",
+    }).then(async (response) => {
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({ message: "Yerel oturum baslatilamadi." }));
+        throw new ApiError(data.message ?? "Yerel oturum baslatilamadi.", data);
+      }
+    }).catch((error) => {
+      sessionReadyPromise = null;
+      throw error;
+    });
+  }
+
+  return sessionReadyPromise;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  await ensureLocalSession();
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers ?? {}),
     },
+    credentials: "include",
     ...init,
   });
 

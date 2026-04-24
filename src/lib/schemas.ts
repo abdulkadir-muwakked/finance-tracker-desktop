@@ -28,9 +28,9 @@ export const settingsSchema = z.object({
     .min(1, "Otomatik yedek suresi en az 1 saat olmalidir.")
     .max(24 * 365, "Otomatik yedek suresi en fazla 8760 saat olabilir."),
   driveEnabled: z.boolean(),
-  driveClientId: z.string().optional().or(z.literal("")),
-  driveClientSecret: z.string().optional().or(z.literal("")),
-  driveFolderName: z.string().optional().or(z.literal("")),
+  driveClientId: z.string().trim().optional().or(z.literal("")),
+  driveClientSecret: z.string().trim().optional().or(z.literal("")),
+  driveFolderName: z.string().trim().optional().or(z.literal("")),
 });
 
 export const transactionFiltersSchema = z.object({

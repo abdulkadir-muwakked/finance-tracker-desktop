@@ -1,4 +1,5 @@
 import fs from "fs";
+import path from "path";
 import { google } from "googleapis";
 import type { drive_v3 } from "googleapis";
 import { prisma } from "./prisma";
@@ -7,7 +8,15 @@ const DRIVE_SCOPE = ["https://www.googleapis.com/auth/drive"];
 const DEFAULT_DRIVE_FOLDER_NAME = "Finans Takip Backups";
 const CALLBACK_BASE_URL = process.env.DRIVE_CALLBACK_BASE_URL ?? "http://127.0.0.1:3001";
 const CALLBACK_PATH = "/api/drive/oauth/callback";
+const SECURE_DRIVE_STORE_FILENAME = "drive-secrets.json";
 let pendingAuthState: string | null = null;
+
+type SecureDriveSecrets = {
+  clientSecret?: string;
+  refreshToken?: string;
+  accessToken?: string;
+  expiryDate?: string;
+};
 
 type DriveConfig = {
   enabled: boolean;
@@ -25,8 +34,86 @@ type DriveConfig = {
   lastUploadError: string | null;
 };
 
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Drive islemi basarisiz oldu.";
+}
+
+function isDriveNotFoundError(error: unknown) {
+  const code =
+    typeof error === "object" && error !== null && "code" in error ? Number((error as { code?: unknown }).code) : undefined;
+  const message = getErrorMessage(error).toLowerCase();
+
+  return code === 404 || message.includes("file not found") || message.includes("not found");
+}
+
 function getRedirectUri() {
   return `${CALLBACK_BASE_URL}${CALLBACK_PATH}`;
+}
+
+function getSecureStorePath() {
+  const appDataDir =
+    process.env.APP_DATA_DIR ??
+    (() => {
+      const databaseUrl = process.env.DATABASE_URL;
+      if (!databaseUrl?.startsWith("file:")) {
+        throw new Error("Guvenli Drive saklama yolu bulunamadi.");
+      }
+
+      return path.dirname(databaseUrl.replace("file:", ""));
+    })();
+
+  return path.join(appDataDir, "credentials", SECURE_DRIVE_STORE_FILENAME);
+}
+
+function readSecureSecretsFile(): SecureDriveSecrets {
+  const storePath = getSecureStorePath();
+  if (!fs.existsSync(storePath)) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(fs.readFileSync(storePath, "utf-8")) as SecureDriveSecrets;
+  } catch {
+    return {};
+  }
+}
+
+function writeSecureSecretsFile(data: SecureDriveSecrets) {
+  const storePath = getSecureStorePath();
+  fs.mkdirSync(path.dirname(storePath), { recursive: true });
+  fs.writeFileSync(storePath, JSON.stringify(data, null, 2), { mode: 0o600 });
+}
+
+async function removeLegacySecretSettings() {
+  await prisma.appSetting.deleteMany({
+    where: {
+      key: {
+        in: ["driveClientSecret", "driveRefreshToken", "driveAccessToken", "driveExpiryDate"],
+      },
+    },
+  });
+}
+
+async function loadSecureDriveSecretsFromStore(publicMap: Map<string, string>): Promise<SecureDriveSecrets> {
+  const fileSecrets = readSecureSecretsFile();
+  if (fileSecrets.clientSecret || fileSecrets.refreshToken || fileSecrets.accessToken || fileSecrets.expiryDate) {
+    return fileSecrets;
+  }
+
+  const legacySecrets: SecureDriveSecrets = {
+    clientSecret: publicMap.get("driveClientSecret") ?? undefined,
+    refreshToken: publicMap.get("driveRefreshToken") ?? undefined,
+    accessToken: publicMap.get("driveAccessToken") ?? undefined,
+    expiryDate: publicMap.get("driveExpiryDate") ?? undefined,
+  };
+
+  if (legacySecrets.clientSecret || legacySecrets.refreshToken || legacySecrets.accessToken || legacySecrets.expiryDate) {
+    writeSecureSecretsFile(legacySecrets);
+    await removeLegacySecretSettings();
+    return legacySecrets;
+  }
+
+  return {};
 }
 
 async function getSettingsMap(keys: string[]) {
@@ -59,29 +146,30 @@ export async function getDriveConfig(): Promise<DriveConfig> {
   const map = await getSettingsMap([
     "driveEnabled",
     "driveClientId",
-    "driveClientSecret",
     "driveFolderName",
     "driveFolderId",
     "driveConnectedEmail",
-    "driveRefreshToken",
-    "driveAccessToken",
-    "driveExpiryDate",
     "driveLastUploadAt",
     "driveLastUploadFile",
     "driveLastUploadStatus",
     "driveLastUploadError",
+    "driveClientSecret",
+    "driveRefreshToken",
+    "driveAccessToken",
+    "driveExpiryDate",
   ]);
+  const secureSecrets = await loadSecureDriveSecretsFromStore(map);
 
   return {
     enabled: map.get("driveEnabled") === "true",
     clientId: map.get("driveClientId") ?? "",
-    clientSecret: map.get("driveClientSecret") ?? "",
+    clientSecret: secureSecrets.clientSecret ?? "",
     folderName: map.get("driveFolderName")?.trim() || DEFAULT_DRIVE_FOLDER_NAME,
     folderId: map.get("driveFolderId") ?? null,
     connectedEmail: map.get("driveConnectedEmail") ?? null,
-    refreshToken: map.get("driveRefreshToken") ?? null,
-    accessToken: map.get("driveAccessToken") ?? null,
-    expiryDate: map.get("driveExpiryDate") ?? null,
+    refreshToken: secureSecrets.refreshToken ?? null,
+    accessToken: secureSecrets.accessToken ?? null,
+    expiryDate: secureSecrets.expiryDate ?? null,
     lastUploadAt: map.get("driveLastUploadAt") ?? null,
     lastUploadFile: map.get("driveLastUploadFile") ?? null,
     lastUploadStatus: map.get("driveLastUploadStatus") ?? null,
@@ -169,6 +257,10 @@ async function ensureDriveFolder() {
   return created.data.id;
 }
 
+async function resetStoredDriveFolder() {
+  await removeSetting("driveFolderId");
+}
+
 async function updateUploadStatus(status: {
   lastUploadAt?: string | null;
   lastUploadFile?: string | null;
@@ -196,8 +288,35 @@ async function pruneRemoteBackups(drive: drive_v3.Drive, folderId: string, keepC
   await Promise.all(
     stale
       .filter((file) => file.id)
-      .map((file) => drive.files.delete({ fileId: file.id! })),
+      .map(async (file) => {
+        try {
+          await drive.files.delete({ fileId: file.id! });
+        } catch (error) {
+          if (!isDriveNotFoundError(error)) {
+            throw error;
+          }
+        }
+      }),
   );
+}
+
+async function uploadBackupOnce(localFilePath: string, fileName: string) {
+  const { drive } = await getAuthorizedClients();
+  const folderId = await ensureDriveFolder();
+
+  await drive.files.create({
+    requestBody: {
+      name: fileName,
+      parents: [folderId],
+    },
+    media: {
+      mimeType: "application/octet-stream",
+      body: fs.createReadStream(localFilePath),
+    },
+    fields: "id",
+  });
+
+  return { drive, folderId };
 }
 
 export async function uploadBackupToDrive(localFilePath: string, fileName: string, keepCount: number) {
@@ -211,22 +330,20 @@ export async function uploadBackupToDrive(localFilePath: string, fileName: strin
   }
 
   try {
-    const { drive } = await getAuthorizedClients();
-    const folderId = await ensureDriveFolder();
+    let uploadResult;
 
-    await drive.files.create({
-      requestBody: {
-        name: fileName,
-        parents: [folderId],
-      },
-      media: {
-        mimeType: "application/octet-stream",
-        body: fs.createReadStream(localFilePath),
-      },
-      fields: "id",
-    });
+    try {
+      uploadResult = await uploadBackupOnce(localFilePath, fileName);
+    } catch (error) {
+      if (!isDriveNotFoundError(error)) {
+        throw error;
+      }
 
-    await pruneRemoteBackups(drive, folderId, keepCount);
+      await resetStoredDriveFolder();
+      uploadResult = await uploadBackupOnce(localFilePath, fileName);
+    }
+
+    await pruneRemoteBackups(uploadResult.drive, uploadResult.folderId, keepCount);
     await updateUploadStatus({
       lastUploadAt: new Date().toISOString(),
       lastUploadFile: fileName,
@@ -236,7 +353,7 @@ export async function uploadBackupToDrive(localFilePath: string, fileName: strin
 
     return { skipped: false, success: true };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Drive yuklemesi basarisiz oldu.";
+    const message = getErrorMessage(error);
     await updateUploadStatus({
       lastUploadStatus: "error",
       lastUploadError: message,
@@ -251,10 +368,17 @@ export async function updateDriveSettings(input: {
   clientSecret: string;
   folderName: string;
 }) {
+  if (input.clientSecret.trim()) {
+    const currentSecrets = readSecureSecretsFile();
+    writeSecureSecretsFile({
+      ...currentSecrets,
+      clientSecret: input.clientSecret.trim(),
+    });
+  }
+
   await Promise.all([
     setSetting("driveEnabled", String(input.enabled)),
     setSetting("driveClientId", input.clientId.trim()),
-    setSetting("driveClientSecret", input.clientSecret.trim()),
     setSetting("driveFolderName", input.folderName.trim() || DEFAULT_DRIVE_FOLDER_NAME),
   ]);
 
@@ -290,6 +414,15 @@ export async function completeDriveOAuthFlow(code: string, state?: string | null
 
   const oauth2Client = createOAuthClient(config);
   const { tokens } = await oauth2Client.getToken(code);
+  const currentSecrets = readSecureSecretsFile();
+
+  writeSecureSecretsFile({
+    ...currentSecrets,
+    clientSecret: config.clientSecret,
+    refreshToken: tokens.refresh_token ?? config.refreshToken ?? undefined,
+    accessToken: tokens.access_token ?? undefined,
+    expiryDate: tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : undefined,
+  });
 
   oauth2Client.setCredentials(tokens);
   let connectedEmail = config.connectedEmail ?? "";
@@ -313,9 +446,6 @@ export async function completeDriveOAuthFlow(code: string, state?: string | null
   }
 
   await Promise.all([
-    setSetting("driveRefreshToken", tokens.refresh_token ?? config.refreshToken ?? ""),
-    setSetting("driveAccessToken", tokens.access_token ?? ""),
-    setSetting("driveExpiryDate", tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : ""),
     setSetting("driveConnectedEmail", connectedEmail),
     setSetting("driveLastUploadStatus", "connected"),
     removeSetting("driveLastUploadError"),
@@ -327,10 +457,15 @@ export async function completeDriveOAuthFlow(code: string, state?: string | null
 }
 
 export async function disconnectDrive() {
+  const currentSecrets = readSecureSecretsFile();
+  writeSecureSecretsFile({
+    ...currentSecrets,
+    refreshToken: undefined,
+    accessToken: undefined,
+    expiryDate: undefined,
+  });
+
   await Promise.all([
-    removeSetting("driveRefreshToken"),
-    removeSetting("driveAccessToken"),
-    removeSetting("driveExpiryDate"),
     removeSetting("driveConnectedEmail"),
     removeSetting("driveFolderId"),
   ]);

@@ -1,13 +1,22 @@
 import cors from "cors";
+import crypto from "crypto";
 import express from "express";
+import fs from "fs";
 import path from "path";
 import { prisma } from "./prisma";
 import { createBackup, getBackupStatus, openBackupDirectory, updateBackupDirectory } from "./backup";
-import { completeDriveOAuthFlow, disconnectDrive, getDriveConfig, startDriveOAuthFlow } from "./drive";
+import { completeDriveOAuthFlow, disconnectDrive, getDriveConfig, startDriveOAuthFlow, updateDriveSettings } from "./drive";
 import { categorySchema, settingsSchema, transactionFormSchema } from "../lib/schemas";
 import { formatMonthYear } from "../lib/format";
 
 type PeriodType = "daily" | "monthly" | "yearly" | "all";
+const API_SESSION_COOKIE_NAME = "finans_api_session";
+const SAME_MACHINE_ORIGINS = new Set([
+  "http://127.0.0.1:3000",
+  "http://localhost:3000",
+  "http://127.0.0.1:3001",
+  "http://localhost:3001",
+]);
 
 function getMonthRange(monthInput?: string) {
   const today = new Date();
@@ -82,6 +91,59 @@ function getPeriodRange(
 
 function sumAmounts(items: Array<{ amount: number }>) {
   return items.reduce((total, item) => total + item.amount, 0);
+}
+
+function getCredentialsDirectory() {
+  const appDataDir =
+    process.env.APP_DATA_DIR ??
+    (() => {
+      const databaseUrl = process.env.DATABASE_URL;
+      if (!databaseUrl?.startsWith("file:")) {
+        throw new Error("Kimlik bilgisi klasoru bulunamadi.");
+      }
+
+      return path.dirname(databaseUrl.replace("file:", ""));
+    })();
+
+  return path.join(appDataDir, "credentials");
+}
+
+function getApiSessionTokenPath() {
+  return path.join(getCredentialsDirectory(), "api-session-token");
+}
+
+function getOrCreateApiSessionToken() {
+  const tokenPath = getApiSessionTokenPath();
+
+  if (process.env.LOCAL_API_SESSION_TOKEN) {
+    return process.env.LOCAL_API_SESSION_TOKEN;
+  }
+
+  if (fs.existsSync(tokenPath)) {
+    process.env.LOCAL_API_SESSION_TOKEN = fs.readFileSync(tokenPath, "utf-8").trim();
+    return process.env.LOCAL_API_SESSION_TOKEN;
+  }
+
+  const token = crypto.randomBytes(32).toString("hex");
+  fs.mkdirSync(path.dirname(tokenPath), { recursive: true });
+  fs.writeFileSync(tokenPath, token, { mode: 0o600 });
+  process.env.LOCAL_API_SESSION_TOKEN = token;
+  return token;
+}
+
+function readCookieValue(cookieHeader: string | undefined, name: string) {
+  if (!cookieHeader) {
+    return null;
+  }
+
+  for (const part of cookieHeader.split(";")) {
+    const [key, ...rest] = part.trim().split("=");
+    if (key === name) {
+      return decodeURIComponent(rest.join("="));
+    }
+  }
+
+  return null;
 }
 
 async function buildPeriodReport(
@@ -159,8 +221,70 @@ async function buildPeriodReport(
 export async function createApp(options?: { staticDir?: string; databasePath?: string }) {
   const app = express();
 
-  app.use(cors());
+  app.use(
+    cors({
+      origin(origin, callback) {
+        if (!origin || SAME_MACHINE_ORIGINS.has(origin)) {
+          callback(null, true);
+          return;
+        }
+
+        callback(new Error("CORS engellendi."));
+      },
+      credentials: true,
+    }),
+  );
   app.use(express.json());
+
+  app.post("/api/session", (_request, response) => {
+    const token = getOrCreateApiSessionToken();
+
+    response.cookie(API_SESSION_COOKIE_NAME, token, {
+      httpOnly: true,
+      sameSite: "strict",
+      secure: false,
+      path: "/api",
+      maxAge: 1000 * 60 * 60 * 24 * 30,
+    });
+
+    response.json({ success: true });
+  });
+
+  app.use("/api", (request, response, next) => {
+    if (request.method === "OPTIONS" || request.path === "/session" || request.path === "/drive/oauth/callback") {
+      next();
+      return;
+    }
+
+    const sessionToken = readCookieValue(request.headers.cookie, API_SESSION_COOKIE_NAME);
+
+    if (!sessionToken || sessionToken !== getOrCreateApiSessionToken()) {
+      response.status(401).json({ message: "Yerel API oturumu dogrulanamadi." });
+      return;
+    }
+
+    next();
+  });
+
+  async function buildSettingsResponse(workspaceName: string, defaultCurrency: string) {
+    const [backupStatus, driveConfig] = await Promise.all([getBackupStatus(), getDriveConfig()]);
+
+    return {
+      workspaceName,
+      defaultCurrency,
+      databasePath: options?.databasePath ?? "",
+      ...backupStatus,
+      driveEnabled: driveConfig.enabled,
+      driveClientId: driveConfig.clientId,
+      driveFolderName: driveConfig.folderName,
+      driveClientSecretConfigured: Boolean(driveConfig.clientSecret),
+      driveConnectedEmail: driveConfig.connectedEmail,
+      driveLastUploadAt: driveConfig.lastUploadAt,
+      driveLastUploadFile: driveConfig.lastUploadFile,
+      driveLastUploadStatus: driveConfig.lastUploadStatus,
+      driveLastUploadError: driveConfig.lastUploadError,
+    };
+  }
 
   app.get("/health", (_request, response) => {
     response.json({ ok: true });
@@ -429,23 +553,13 @@ export async function createApp(options?: { staticDir?: string; databasePath?: s
   app.get("/api/settings", async (_request, response) => {
     const settings = await prisma.appSetting.findMany();
     const map = new Map(settings.map((item) => [item.key, item.value]));
-    const [backupStatus, driveConfig] = await Promise.all([getBackupStatus(), getDriveConfig()]);
 
-    return response.json({
-      workspaceName: map.get("workspaceName") ?? "Ofis Finans Takip",
-      defaultCurrency: map.get("defaultCurrency") ?? "TRY",
-      databasePath: options?.databasePath ?? "",
-      ...backupStatus,
-      driveEnabled: driveConfig.enabled,
-      driveClientId: driveConfig.clientId,
-      driveClientSecret: driveConfig.clientSecret,
-      driveFolderName: driveConfig.folderName,
-      driveConnectedEmail: driveConfig.connectedEmail,
-      driveLastUploadAt: driveConfig.lastUploadAt,
-      driveLastUploadFile: driveConfig.lastUploadFile,
-      driveLastUploadStatus: driveConfig.lastUploadStatus,
-      driveLastUploadError: driveConfig.lastUploadError,
-    });
+    return response.json(
+      await buildSettingsResponse(
+        map.get("workspaceName") ?? "Ofis Finans Takip",
+        map.get("defaultCurrency") ?? "TRY",
+      ),
+    );
   });
 
   app.put("/api/settings", async (request, response) => {
@@ -481,11 +595,6 @@ export async function createApp(options?: { staticDir?: string; databasePath?: s
         create: { key: "driveClientId", value: result.data.driveClientId?.trim() || "" },
       }),
       prisma.appSetting.upsert({
-        where: { key: "driveClientSecret" },
-        update: { value: result.data.driveClientSecret?.trim() || "" },
-        create: { key: "driveClientSecret", value: result.data.driveClientSecret?.trim() || "" },
-      }),
-      prisma.appSetting.upsert({
         where: { key: "driveFolderName" },
         update: { value: result.data.driveFolderName?.trim() || "Finans Takip Backups" },
         create: { key: "driveFolderName", value: result.data.driveFolderName?.trim() || "Finans Takip Backups" },
@@ -496,23 +605,14 @@ export async function createApp(options?: { staticDir?: string; databasePath?: s
       await updateBackupDirectory(result.data.backupDirectory);
     }
 
-    const [backupStatus, driveConfig] = await Promise.all([getBackupStatus(), getDriveConfig()]);
-
-    return response.json({
-      workspaceName: result.data.workspaceName,
-      defaultCurrency: result.data.defaultCurrency,
-      databasePath: options?.databasePath ?? "",
-      ...backupStatus,
-      driveEnabled: driveConfig.enabled,
-      driveClientId: driveConfig.clientId,
-      driveClientSecret: driveConfig.clientSecret,
-      driveFolderName: driveConfig.folderName,
-      driveConnectedEmail: driveConfig.connectedEmail,
-      driveLastUploadAt: driveConfig.lastUploadAt,
-      driveLastUploadFile: driveConfig.lastUploadFile,
-      driveLastUploadStatus: driveConfig.lastUploadStatus,
-      driveLastUploadError: driveConfig.lastUploadError,
+    await updateDriveSettings({
+      enabled: result.data.driveEnabled,
+      clientId: result.data.driveClientId ?? "",
+      clientSecret: result.data.driveClientSecret ?? "",
+      folderName: result.data.driveFolderName ?? "",
     });
+
+    return response.json(await buildSettingsResponse(result.data.workspaceName, result.data.defaultCurrency));
   });
 
   app.post("/api/drive/connect", async (_request, response) => {
@@ -552,23 +652,16 @@ export async function createApp(options?: { staticDir?: string; databasePath?: s
 
   app.post("/api/drive/disconnect", async (_request, response) => {
     await disconnectDrive();
-    const [backupStatus, driveConfig] = await Promise.all([getBackupStatus(), getDriveConfig()]);
 
-    return response.json({
-      workspaceName: "Ofis Finans Takip",
-      defaultCurrency: "TRY",
-      databasePath: options?.databasePath ?? "",
-      ...backupStatus,
-      driveEnabled: driveConfig.enabled,
-      driveClientId: driveConfig.clientId,
-      driveClientSecret: driveConfig.clientSecret,
-      driveFolderName: driveConfig.folderName,
-      driveConnectedEmail: driveConfig.connectedEmail,
-      driveLastUploadAt: driveConfig.lastUploadAt,
-      driveLastUploadFile: driveConfig.lastUploadFile,
-      driveLastUploadStatus: driveConfig.lastUploadStatus,
-      driveLastUploadError: driveConfig.lastUploadError,
-    });
+    const settings = await prisma.appSetting.findMany();
+    const map = new Map(settings.map((item) => [item.key, item.value]));
+
+    return response.json(
+      await buildSettingsResponse(
+        map.get("workspaceName") ?? "Ofis Finans Takip",
+        map.get("defaultCurrency") ?? "TRY",
+      ),
+    );
   });
 
   app.post("/api/backups/run", async (_request, response) => {

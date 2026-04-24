@@ -101,8 +101,8 @@ export type SettingsData = {
   lastBackupMode: string | null;
   driveEnabled: boolean;
   driveClientId: string;
-  driveClientSecret: string;
   driveFolderName: string;
+  driveClientSecretConfigured: boolean;
   driveConnectedEmail: string | null;
   driveLastUploadAt: string | null;
   driveLastUploadFile: string | null;

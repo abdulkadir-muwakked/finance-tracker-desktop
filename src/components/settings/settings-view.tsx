@@ -48,7 +48,7 @@ export function SettingsView() {
           autoBackupIntervalHours: settingsData.autoBackupIntervalHours,
           driveEnabled: settingsData.driveEnabled,
           driveClientId: settingsData.driveClientId,
-          driveClientSecret: settingsData.driveClientSecret,
+          driveClientSecret: "",
           driveFolderName: settingsData.driveFolderName,
         });
         setBackupPreset(
@@ -188,7 +188,17 @@ export function SettingsView() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="driveClientSecret">Google Client Secret</Label>
-                  <Input id="driveClientSecret" type="password" {...form.register("driveClientSecret")} />
+                  <Input
+                    id="driveClientSecret"
+                    type="password"
+                    placeholder={settings?.driveClientSecretConfigured ? "Kayitli secret degistirmek icin yeni deger girin" : ""}
+                    {...form.register("driveClientSecret")}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {settings?.driveClientSecretConfigured
+                      ? "Mevcut secret gizli tutulur. Degistirmek istemiyorsaniz bos birakin."
+                      : "Ilk baglanti icin Google Client Secret girin."}
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="driveFolderName">Drive klasor adi</Label>
